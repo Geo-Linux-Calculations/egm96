@@ -19,19 +19,9 @@
  * 3. This notice may not be removed or altered from any source distribution.
  */
 
-#include "../EGM96.h"
-
 #include <stdio.h>
 #include <math.h>
-
-/* ************************************************************************** */
-
-#define _coeffs (65341) //!< Size of correction and harmonic coefficients arrays (361*181)
-#define _nmax   (360)   //!< Maximum degree and orders of harmonic coefficients.
-#define _361    (361)
-
-//! EGM96 correction and harmonic coefficients
-static double egm96_data[_coeffs+1][4];
+#include "egm96.h"
 
 /* ************************************************************************** */
 
@@ -52,8 +42,7 @@ void dhcsin(FILE *f_12)
     const double j8 = -0.142681087920e-10;
     const double j10 = 0.121439275882e-13;
 
-    unsigned n;
-    unsigned m = (((_nmax+1) * (_nmax+2)) / 2);
+    unsigned n, m = (((_nmax+1) * (_nmax+2)) / 2);
     for (n = 1; n <= m; n++)
     {
         egm96_data[n][2] = egm96_data[n][3] = 0;
@@ -75,20 +64,20 @@ void dhcsin(FILE *f_12)
 
 /* ************************************************************************** */
 
-void init_arrays()
+void init_arrays(char* egmname, char* corname)
 {
+    FILE *f_1, *f_12;
     int ig, n, m;
     double t1, t2;
+    unsigned int i;
 
-    FILE *f_1 = fopen("CORCOEF", "rb");   // correction coefficient file: modified with 'sed -e"s/D/e/g"' to be read with fscanf
-    FILE *f_12 = fopen("EGM96", "rb");    // potential coefficient file
+    f_1 = fopen(corname, "rb");   // correction coefficient file: modified with 'sed -e"s/D/e/g"' to be read with fscanf
+    f_12 = fopen(egmname, "rb");    // potential coefficient file
 
     if (f_1 && f_12)
     {
-        for (unsigned i = 1; i <= _coeffs; i++)
-        {
+        for (i = 1; i <= _coeffs; i++)
             egm96_data[i][0] = egm96_data[i][1] = 0;
-        }
 
         while (4 == fscanf(f_1, "%i %i %lg %lg", &n, &m, &t1, &t2))
         {
@@ -110,10 +99,12 @@ void init_arrays()
 /*!
  * \brief Write precomputed EGM96 correction and harmonic coefficients to egm96_data.h
  */
-void write_arrays()
+void write_arrays(char* genname)
 {
-    FILE *precomp_out = fopen("EGM96_data.h", "wb");
+    FILE *precomp_out;
+    unsigned int i;
 
+    precomp_out = fopen(genname, "wb");
     if (precomp_out)
     {
         fprintf(precomp_out, "#ifndef EGM96_DATA_H\n");
@@ -121,7 +112,7 @@ void write_arrays()
         fprintf(precomp_out, "//! Precomputed EGM96 correction and harmonic coefficients\n");
         fprintf(precomp_out, "static const double egm96_data[65342][4] = {\n");
 
-        for (unsigned i = 0; i <= _coeffs; i++)
+        for (i = 0; i <= _coeffs; i++)
         {
             fprintf(precomp_out, "{%g,%g,%g,%g},\n", egm96_data[i][0], egm96_data[i][1], egm96_data[i][2], egm96_data[i][3]);
         }
@@ -147,33 +138,22 @@ void write_arrays()
  * - computed geoid heights ("OUTPUT.dat") => unit = 20
  * - precomputed egm96_data.h (to use with the library)
  */
-int main(void)
+int main(int argc, char *argv[])
 {
-    init_arrays();
-    write_arrays();
-
-    FILE *f_14 = fopen("INPUT.DAT", "rb");
-    FILE *f_20 = fopen("OUTPUT.DAT", "wb");
-
-    if (f_14 && f_20)
+    if (argc < 3)
     {
-        // read geodetic latitude,longitude at point undulation is wanted
-        double flat, flon;
-        while (2 == fscanf(f_14, "%lg %lg", &flat, &flon))
-        {
-            // compute the geocentric latitude, geocentric radius, normal gravity
-            double u = egm96_compute_altitude_offset(flat, flon);
+        printf("EGM96 generation head-file\n");
+        printf("Usage:\n");
+        printf(" %s EGM96-file COR-file [HEAD-file]\n", argv[0]);
+    }
+    else
+    {
+        init_arrays(argv[1], argv[2]);
 
-            // u is the geoid undulation from the EGM96 potential coefficient model
-            // including the height anomaly to geoid undulation correction term
-            // and a correction term to have the undulations refer to the
-            // WGS84 ellipsoid. the geoid undulation unit is meters.
-
-            fprintf(f_20, "%14.7f %14.7f %16.7f\n", flat, flon, u);
-        }
-
-        fclose(f_14);
-        fclose(f_20);
+        if (argc > 3)
+            write_arrays(argv[3]);
+        else
+            write_arrays("EGM96_data.h");
     }
 
     return 0;

@@ -41,16 +41,9 @@
  * of Geodetic Science and Surveying, the Ohio State University, Columbus, 1982
  */
 
-#include "EGM96.h"
-#include "EGM96_data.h"
-
+#include <stdio.h>
 #include <math.h>
-
-/* ************************************************************************** */
-
-#define _coeffs (65341) //!< Size of correction and harmonic coefficients arrays (361*181)
-#define _nmax   (360)   //!< Maximum degree and orders of harmonic coefficients.
-#define _361    (361)
+#include "egm96.h"
 
 /* ************************************************************************** */
 
@@ -226,19 +219,18 @@ void radgra(double lat, double lon, double *rlat, double *gr, double *re)
 double undulation(double lat, double lon)
 {
     double p[_coeffs+1], sinml[_361+1], cosml[_361+1], rleg[_361+1];
-
     double rlat, gr, re;
-    unsigned nmax1 = _nmax + 1;
+    unsigned int j, m, i, nmax1 = _nmax + 1;
 
     // compute the geocentric latitude, geocentric radius, normal gravity
     radgra(lat, lon, &rlat, &gr, &re);
     rlat = (M_PI / 2) - rlat;
 
-    for (unsigned j = 1; j <= nmax1; j++)
+    for (j = 1; j <= nmax1; j++)
     {
-        unsigned m = j - 1;
+        m = j - 1;
         legfdn(m, rlat, rleg);
-        for (unsigned i = j ; i <= nmax1; i++)
+        for (i = j ; i <= nmax1; i++)
         {
             p[(((i - 1) * i) / 2) + m + 1] = rleg[i];
         }
@@ -254,6 +246,139 @@ double egm96_compute_altitude_offset(double lat, double lon)
 {
     const double rad = (180.0 / M_PI);
     return undulation(lat/rad, lon/rad);
+}
+
+/* ************************************************************************** */
+
+/*!
+ * \param f_12: EGM96 coefficients file.
+ *
+ * The even degree zonal coefficients given below were computed for the WGS84(g873)
+ * system of constants and are identical to those values used in the NIMA gridding procedure.
+ * Computed using subroutine grs written by N.K. PAVLIS.
+ */
+void dhcsin(FILE *f_12)
+{
+    double c, s, ec, es;
+
+    const double j2 = 0.108262982131e-2;
+    const double j4 = -.237091120053e-05;
+    const double j6 = 0.608346498882e-8;
+    const double j8 = -0.142681087920e-10;
+    const double j10 = 0.121439275882e-13;
+
+    unsigned n, m = (((_nmax+1) * (_nmax+2)) / 2);
+    for (n = 1; n <= m; n++)
+    {
+        egm96_data[n][2] = egm96_data[n][3] = 0;
+    }
+
+    while (6 == fscanf(f_12, "%i %i %lf %lf %lf %lf", &n, &m, &c, &s, &ec, &es))
+    {
+        if (n > _nmax) continue;
+        n = ((n * (n + 1)) / 2) + m + 1;
+        egm96_data[n][2] = c;
+        egm96_data[n][3] = s;
+    }
+    egm96_data[4][2] += j2 / sqrt(5);
+    egm96_data[11][2] += j4 / 3.0;
+    egm96_data[22][2] += j6 / sqrt(13);
+    egm96_data[37][2] += j8 / sqrt(17);
+    egm96_data[56][2] += j10 / sqrt(21);
+}
+
+/* ************************************************************************** */
+
+void init_arrays(char* egmname, char* corname)
+{
+    FILE *f_1, *f_12;
+    int ig, n, m;
+    double t1, t2;
+    unsigned int i;
+
+    f_1 = fopen(corname, "rb");   // correction coefficient file: modified with 'sed -e"s/D/e/g"' to be read with fscanf
+    f_12 = fopen(egmname, "rb");    // potential coefficient file
+
+    if (f_1 && f_12)
+    {
+        for (i = 1; i <= _coeffs; i++)
+            egm96_data[i][0] = egm96_data[i][1] = 0;
+
+        while (4 == fscanf(f_1, "%i %i %lg %lg", &n, &m, &t1, &t2))
+        {
+            ig = ((n * (n+1)) / 2) + m + 1;
+            egm96_data[ig][0] = t1;
+            egm96_data[ig][1] = t2;
+        }
+
+        // the correction coefficients are now read in
+        // the potential coefficients are now read in,
+        // and the reference even degree zonal harmonic coefficients removed to degree 6
+        dhcsin(f_12);
+
+        fclose(f_1);
+        fclose(f_12);
+    }
+}
+
+/* ************************************************************************** */
+
+/*!
+ * \brief Main function.
+ * \return 0 if success.
+ *
+ * The input files consist of:
+ * - correction coefficient set ("CORRCOEF") => unit = 1
+ * - potential coefficient set ("EGM96") => unit = 12
+ * - points at which to compute ("INPUT.dat") => unit = 14
+ * The output file is:
+ * - computed geoid heights ("OUTPUT.dat") => unit = 20
+ * - precomputed egm96_data.h (to use with the library)
+ */
+int main(int argc, char *argv[])
+{
+    FILE *f_14, *f_20;
+    double flat, flon, u;
+    if (argc < 3)
+    {
+        printf("EGM96\n");
+        printf("Usage:\n");
+        printf(" %s EGM96-file COR-file [INPUT-file] [OUTPUT-file]\n", argv[0]);
+    }
+    else
+    {
+        init_arrays(argv[1], argv[2]);
+
+        if (argc > 3)
+            f_14 = fopen(argv[3], "rb");
+        else
+            f_14 = stdin;
+        if (argc > 4)
+            f_20 = fopen(argv[4], "wb");
+        else
+            f_20 = stdout;
+        if (f_14 && f_20)
+        {
+            // read geodetic latitude,longitude at point undulation is wanted
+            while (2 == fscanf(f_14, "%lg %lg", &flat, &flon))
+            {
+                // compute the geocentric latitude, geocentric radius, normal gravity
+                u = egm96_compute_altitude_offset(flat, flon);
+
+                // u is the geoid undulation from the EGM96 potential coefficient model
+                // including the height anomaly to geoid undulation correction term
+                // and a correction term to have the undulations refer to the
+                // WGS84 ellipsoid. the geoid undulation unit is meters.
+
+                fprintf(f_20, "%14.7f %14.7f %16.7f\n", flat, flon, u);
+            }
+
+            fclose(f_14);
+            fclose(f_20);
+        }
+    }
+
+    return 0;
 }
 
 /* ************************************************************************** */

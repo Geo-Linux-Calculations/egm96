@@ -1,10 +1,15 @@
+![GitHub release (latest by date)](https://img.shields.io/github/v/release/Geo-Linux-Calculations/egm96)
+![GitHub Release Date](https://img.shields.io/github/release-date/Geo-Linux-Calculations/egm96)
+![GitHub repo size](https://img.shields.io/github/repo-size/Geo-Linux-Calculations/egm96)
+![GitHub all releases](https://img.shields.io/github/downloads/Geo-Linux-Calculations/egm96/total)
+![GitHub](https://img.shields.io/github/license/Geo-Linux-Calculations/egm96)
+
 EGM96
 =====
 
-
 ## Introduction
 
-This C library is designed for the calculation of a geoid undulation at a point whose latitude and longitude is specified.
+This C tools (library) is designed for the calculation of a geoid undulation at a point whose latitude and longitude is specified.
 
 **TL:DR** It's meant to correct altitudes given by GPS systems, that mesure altitude against the ellipsoid and needs to be corrected to match the geoid.
 
@@ -12,7 +17,8 @@ This C library is designed for the calculation of a geoid undulation at a point 
 
 The library is meant to be easy to use.
 
-* Include in your project the three files _EEM96.c_, _EGM96.h_ and _EGM96_data.h_
+* Include in your project the three files _egm96.c_, _egm96_gen.c_ and _egm96.h_ 
+* Generate the one file _EGM96_data.h_
 * Call the _egm96_compute_altitude_offset_ function:
 
 ```
@@ -31,16 +37,15 @@ The [World Geodetic System](https://en.wikipedia.org/wiki/World_Geodetic_System)
 
 The **EGM96 geoid defines** the nominal sea level surface by means of a spherical harmonics series of degree 360. The deviations of the EGM96 geoid from the WGS 84 reference ellipsoid range from about −105 m to about +85 m.
 
-![geoid](about/EGM96.png)
+![geoid](doc/EGM96.png)
 
 In geodesy, a **reference ellipsoid** is a mathematically defined surface that approximates the geoid, which is the truer, imperfect figure of the Earth, or other planetary body, as opposed to a perfect, smooth, and unaltered sphere, which factors in the undulations of the bodies' gravity due to variations in the composition and density of the interior, as well as the subsequent flattening caused by the centrifugal force from the rotation of these massive objects (for planetary bodies that do rotate).
 
-![geoid vs ellipsoid](about/geoid_vs_ellipsoid.png)
+![geoid vs ellipsoid](doc/geoid_vs_ellipsoid.png)
 
 ### About the original implementation
 
 This project is a fork of [a project](https://sourceforge.net/projects/egm96-f477-c.) by D.Ineiev, containings a rought translation from Fortran to C of an [EGM96 implementation](https://earth-info.nga.mil/GandG/wgs84/gravitymod/egm96/egm96.html) from the [National Geospacial-intelligence Agency](https://earth-info.nga.mil/).
-
 
 
 ## Get involved!
