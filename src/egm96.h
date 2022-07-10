@@ -27,9 +27,8 @@
 #define _nmax   (360)   //!< Maximum degree and orders of harmonic coefficients.
 #define _361    (361)
 
-//! EGM96 correction and harmonic coefficients
-static double egm96_data[_coeffs+1][4]={0};
-
+void egm96_init_arrays(char* egmname, char* corname);
+void egm96_write_arrays(char* genname);
 /*!
  * \brief Compute the geoid undulation from the EGM96 potential coefficient model, for a given latitude and longitude.
  * \param latitude: Latitude in degrees.

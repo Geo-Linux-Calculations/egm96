@@ -45,9 +45,12 @@
 #include <math.h>
 #include "egm96.h"
 
+//! EGM96 correction and harmonic coefficients
+static double egm96_data[_coeffs+1][4]={0};
+
 /* ************************************************************************** */
 
-double hundu(double p[_coeffs+1],
+double egm96_hundu(double p[_coeffs+1],
              double sinml[_361+1], double cosml[_361+1],
              double gr, double re)
 {
@@ -88,7 +91,7 @@ double hundu(double p[_coeffs+1],
     return ((a * GM) / (gr * re)) + (ac / 100.0) - 0.53;
 }
 
-void dscml(double rlon, double sinml[_361+1], double cosml[_361+1])
+void egm96_dscml(double rlon, double sinml[_361+1], double cosml[_361+1])
 {
     double a = sin(rlon);
     double b = cos(rlon);
@@ -117,7 +120,7 @@ void dscml(double rlon, double sinml[_361+1], double cosml[_361+1])
  * Original programmer: Oscar L. Colombo, Dept. of Geodetic Science the Ohio State University, August 1980.
  * ineiev: I removed the derivatives, for they are never computed here.
  */
-void legfdn(unsigned m, double theta, double rleg[_361+1])
+void egm96_legfdn(unsigned m, double theta, double rleg[_361+1])
 {
     static double drts[1301], dirt[1301], cothet, sithet, rlnn[_361+1];
     static int ir; // TODO 'ir' must be set to zero before the first call to this sub.
@@ -192,7 +195,7 @@ void legfdn(unsigned m, double theta, double rleg[_361+1])
  * latitude, and an approximate value of normal gravity at the point based the
  * constants of the WGS84(g873) system are used.
  */
-void radgra(double lat, double lon, double *rlat, double *gr, double *re)
+void egm96_radgra(double lat, double lon, double *rlat, double *gr, double *re)
 {
     const double a = 6378137.0;
     const double e2 = 0.00669437999013;
@@ -216,28 +219,28 @@ void radgra(double lat, double lon, double *rlat, double *gr, double *re)
  * \param lon: Longitude in radians.
  * \return The geoid undulation / altitude offset (in meters).
  */
-double undulation(double lat, double lon)
+double egm96_undulation(double lat, double lon)
 {
     double p[_coeffs+1], sinml[_361+1], cosml[_361+1], rleg[_361+1];
     double rlat, gr, re;
     unsigned int j, m, i, nmax1 = _nmax + 1;
 
     // compute the geocentric latitude, geocentric radius, normal gravity
-    radgra(lat, lon, &rlat, &gr, &re);
+    egm96_radgra(lat, lon, &rlat, &gr, &re);
     rlat = (M_PI / 2) - rlat;
 
     for (j = 1; j <= nmax1; j++)
     {
         m = j - 1;
-        legfdn(m, rlat, rleg);
+        egm96_legfdn(m, rlat, rleg);
         for (i = j ; i <= nmax1; i++)
         {
             p[(((i - 1) * i) / 2) + m + 1] = rleg[i];
         }
      }
-     dscml(lon, sinml, cosml);
+     egm96_dscml(lon, sinml, cosml);
 
-     return hundu(p, sinml, cosml, gr, re);
+     return egm96_hundu(p, sinml, cosml, gr, re);
 }
 
 /* ************************************************************************** */
@@ -245,7 +248,7 @@ double undulation(double lat, double lon)
 double egm96_compute_altitude_offset(double lat, double lon)
 {
     const double rad = (180.0 / M_PI);
-    return undulation(lat/rad, lon/rad);
+    return egm96_undulation(lat/rad, lon/rad);
 }
 
 /* ************************************************************************** */
@@ -257,7 +260,7 @@ double egm96_compute_altitude_offset(double lat, double lon)
  * system of constants and are identical to those values used in the NIMA gridding procedure.
  * Computed using subroutine grs written by N.K. PAVLIS.
  */
-void dhcsin(FILE *f_12)
+void egm96_dhcsin(FILE *f_12)
 {
     double c, s, ec, es;
 
@@ -289,7 +292,7 @@ void dhcsin(FILE *f_12)
 
 /* ************************************************************************** */
 
-void init_arrays(char* egmname, char* corname)
+void egm96_init_arrays(char* egmname, char* corname)
 {
     FILE *f_1, *f_12;
     int ig, n, m;
@@ -314,71 +317,39 @@ void init_arrays(char* egmname, char* corname)
         // the correction coefficients are now read in
         // the potential coefficients are now read in,
         // and the reference even degree zonal harmonic coefficients removed to degree 6
-        dhcsin(f_12);
+        egm96_dhcsin(f_12);
 
         fclose(f_1);
         fclose(f_12);
     }
 }
 
-/* ************************************************************************** */
-
 /*!
- * \brief Main function.
- * \return 0 if success.
- *
- * The input files consist of:
- * - correction coefficient set ("CORRCOEF") => unit = 1
- * - potential coefficient set ("EGM96") => unit = 12
- * - points at which to compute ("INPUT.dat") => unit = 14
- * The output file is:
- * - computed geoid heights ("OUTPUT.dat") => unit = 20
- * - precomputed egm96_data.h (to use with the library)
+ * \brief Write precomputed EGM96 correction and harmonic coefficients to egm96_data.h
  */
-int main(int argc, char *argv[])
+void egm96_write_arrays(char* genname)
 {
-    FILE *f_14, *f_20;
-    double flat, flon, u;
-    if (argc < 3)
-    {
-        printf("EGM96\n");
-        printf("Usage:\n");
-        printf(" %s EGM96-file COR-file [INPUT-file] [OUTPUT-file]\n", argv[0]);
-    }
-    else
-    {
-        init_arrays(argv[1], argv[2]);
+    FILE *precomp_out;
+    unsigned int i;
 
-        if (argc > 3)
-            f_14 = fopen(argv[3], "rb");
-        else
-            f_14 = stdin;
-        if (argc > 4)
-            f_20 = fopen(argv[4], "wb");
-        else
-            f_20 = stdout;
-        if (f_14 && f_20)
+    precomp_out = fopen(genname, "wb");
+    if (precomp_out)
+    {
+        fprintf(precomp_out, "#ifndef EGM96_DATA_H\n");
+        fprintf(precomp_out, "#define EGM96_DATA_H\n\n");
+        fprintf(precomp_out, "//! Precomputed EGM96 correction and harmonic coefficients\n");
+        fprintf(precomp_out, "static const double egm96_data[65342][4] = {\n");
+
+        for (i = 0; i <= _coeffs; i++)
         {
-            // read geodetic latitude,longitude at point undulation is wanted
-            while (2 == fscanf(f_14, "%lg %lg", &flat, &flon))
-            {
-                // compute the geocentric latitude, geocentric radius, normal gravity
-                u = egm96_compute_altitude_offset(flat, flon);
-
-                // u is the geoid undulation from the EGM96 potential coefficient model
-                // including the height anomaly to geoid undulation correction term
-                // and a correction term to have the undulations refer to the
-                // WGS84 ellipsoid. the geoid undulation unit is meters.
-
-                fprintf(f_20, "%14.7f %14.7f %16.7f\n", flat, flon, u);
-            }
-
-            fclose(f_14);
-            fclose(f_20);
+            fprintf(precomp_out, "{%g,%g,%g,%g},\n", egm96_data[i][0], egm96_data[i][1], egm96_data[i][2], egm96_data[i][3]);
         }
-    }
 
-    return 0;
+        fprintf(precomp_out, "};\n\n");
+        fprintf(precomp_out, "#endif // EGM96_DATA_H\n");
+
+        fclose(precomp_out);
+    }
 }
 
 /* ************************************************************************** */

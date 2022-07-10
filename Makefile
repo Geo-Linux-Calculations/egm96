@@ -1,11 +1,13 @@
 PROJNAME      = egm96
 SRCS          = src
+PLIBNAME      = lib$(PROJNAME).a
 PROGNAME1     = $(PROJNAME)
 PROGNAME2     = $(PROJNAME)_gen
 PROGS         = $(PROGNAME1) $(PROGNAME2)
 CC            = gcc
 CFLAGS        = -Wall
 LDFLAGS       = -lm -s
+AR            = ar
 PREFIX        = /usr/local
 INSTALL       = install
 LN            = ln -fs
@@ -17,12 +19,18 @@ RM            = rm -f
 all: $(PROGS)
 
 clean:
-	$(RM) $(PROGS) man_*.pdf
+	$(RM) $(SRCS)/*.o $(PLIBNAME) $(PROGS) man_*.pdf
 
-$(PROGNAME1): $(SRCS)/$(PROGNAME1).c
+$(SRCS)/$(PROJNAME).o: $(SRCS)/$(PROJNAME).c
+	$(CC) $(CFLAGS) -c $^ -o $@
+
+$(PLIBNAME): $(SRCS)/$(PROJNAME).o
+	$(AR) rcs $@ $^
+
+$(PROGNAME1): $(SRCS)/$(PROGNAME1)_cli.c $(PLIBNAME)
 	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)
 
-$(PROGNAME2): $(SRCS)/$(PROGNAME2).c
+$(PROGNAME2): $(SRCS)/$(PROGNAME2).c $(PLIBNAME)
 	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)
 
 manual: man_$(PROGNAME1).pdf man_$(PROGNAME2).pdf
