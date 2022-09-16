@@ -55,56 +55,58 @@ double egm96_hundu(double p[_coeffs+1],
              double gr, double re)
 {
     // WGS 84 gravitational constant in m³/s² (mass of Earth’s atmosphere included)
-    const double GM = 0.3986004418e15;
+    const double GM = EARTH_GM;
     // WGS 84 datum surface equatorial radius
-    const double ae = 6378137.0;
+    const double ae = EARTH_A;
 
-    double ar = ae/re;
-    double arn = ar;
-    double ac = 0;
-    double a = 0;
-
-    unsigned k = 3;
-    for (unsigned n = 2; n <= _nmax; n++)
+    double ar = ae/re, arn = ar, ac = 0.0, a = 0.0;
+    double sum, sumc, temp, tempc, ms, mc, target;
+    unsigned k = 3, n, m;
+    for (n = 2; n <= _nmax; n++)
     {
         arn *= ar;
         k++;
-        double sum = p[k]*egm96_data[k][2];
-        double sumc = p[k]*egm96_data[k][0];
+        sum = p[k] * egm96_data[k][2];
+        sumc = p[k] * egm96_data[k][0];
 
-        for (unsigned m = 1; m <= n; m++)
+        for (m = 1; m <= n; m++)
         {
             k++;
-            double tempc = egm96_data[k][0]*cosml[m] + egm96_data[k][1]*sinml[m];
-            double temp  = egm96_data[k][2]*cosml[m] + egm96_data[k][3]*sinml[m];
-            sumc += p[k]*tempc;
-            sum  += p[k]*temp;
+            mc = cosml[m];
+            ms = sinml[m];
+            tempc = egm96_data[k][0] * mc + egm96_data[k][1] * ms;
+            temp  = egm96_data[k][2] * mc + egm96_data[k][3] * ms;
+            sumc += (p[k] * tempc);
+            sum  += (p[k] * temp);
         }
         ac += sumc;
-        a += sum*arn;
+        a += (sum * arn);
     }
     ac += egm96_data[1][0] + (p[2]*egm96_data[2][0]) + (p[3] * (egm96_data[3][0]*cosml[1] + egm96_data[3][1]*sinml[1]));
 
     // Add haco = ac/100 to convert height anomaly on the ellipsoid to the undulation
     // Add -0.53m to make undulation refer to the WGS84 ellipsoid
+    target = ((a * GM) / (gr * re)) + (ac * WGS84_ACM) - WGS84_DLT;
 
-    return ((a * GM) / (gr * re)) + (ac / 100.0) - 0.53;
+    return target;
 }
 
 void egm96_dscml(double rlon, double sinml[_361+1], double cosml[_361+1])
 {
     double a = sin(rlon);
     double b = cos(rlon);
+    double b2 = b + b;
+    unsigned m;
 
     sinml[1] = a;
     cosml[1] = b;
-    sinml[2] = 2*b*a;
-    cosml[2] = 2*b*b - 1;
+    sinml[2] = b2 * a;
+    cosml[2] = b2 * b - 1;
 
-    for (unsigned m = 3; m <= _nmax; m++)
+    for (m = 3; m <= _nmax; m++)
     {
-        sinml[m] = 2*b*sinml[m-1] - sinml[m-2];
-        cosml[m] = 2*b*cosml[m-1] - cosml[m-2];
+        sinml[m] = b2 * sinml[m-1] - sinml[m-2];
+        cosml[m] = b2 * cosml[m-1] - cosml[m-2];
     }
 }
 
@@ -138,7 +140,7 @@ void egm96_legfdn(unsigned m, double theta, double rleg[_361+1])
         for (n = 1; n <= nmax2p; n++)
         {
             drts[n] = sqrt(n);
-            dirt[n] = 1 / drts[n];
+            dirt[n] = 1.0 / drts[n];
         }
     }
 
@@ -197,20 +199,23 @@ void egm96_legfdn(unsigned m, double theta, double rleg[_361+1])
  */
 void egm96_radgra(double lat, double lon, double *rlat, double *gr, double *re)
 {
-    const double a = 6378137.0;
-    const double e2 = 0.00669437999013;
-    const double geqt = 9.7803253359;
-    const double k = 0.00193185265246;
-    double t1 = sin(lat) * sin(lat);
+    const double a = EARTH_A;
+    const double e2 = EARTH_E2;
+    const double geqt = EARTH_GEQT;
+    const double k = EARTH_K;
+    double lts = sin(lat), ltc = cos(lat);
+    double lns = sin(lon), lnc = cos(lon);
+    double t1 = lts * lts;
     double n = a / sqrt(1.0 - (e2 * t1));
-    double t2 = n * cos(lat);
-    double x = t2 * cos(lon);
-    double y = t2 * sin(lon);
-    double z = (n * (1 - e2)) * sin(lat);
+    double t2 = n * ltc;
+    double x = t2 * lnc;
+    double y = t2 * lns;
+    double z = (n * (1.0 - e2)) * lts;
+    double x2 = x * x, y2 = y * y, z2 = z * z;
 
-    *re = sqrt((x * x) + (y * y) + (z * z));            // compute the geocentric radius
-    *rlat = atan(z / sqrt((x * x) + (y * y)));          // compute the geocentric latitude
-    *gr = geqt * (1 + (k * t1)) / sqrt(1 - (e2 * t1));  // compute normal gravity (m/sec²)
+    *re = sqrt(x2 + y2 + z2);                              // compute the geocentric radius
+    *rlat = atan(z / sqrt(x2 + y2));                       // compute the geocentric latitude
+    *gr = geqt * (1.0 + (k * t1)) / sqrt(1.0 - (e2 * t1)); // compute normal gravity (m/sec²)
 }
 
 /*!
@@ -222,8 +227,8 @@ void egm96_radgra(double lat, double lon, double *rlat, double *gr, double *re)
 double egm96_undulation(double lat, double lon)
 {
     double p[_coeffs+1], sinml[_361+1], cosml[_361+1], rleg[_361+1];
-    double rlat, gr, re;
-    unsigned int j, m, i, nmax1 = _nmax + 1;
+    double rlat, gr, re, target;
+    unsigned int j, m, i, n, nmax1 = _nmax + 1;
 
     // compute the geocentric latitude, geocentric radius, normal gravity
     egm96_radgra(lat, lon, &rlat, &gr, &re);
@@ -235,12 +240,14 @@ double egm96_undulation(double lat, double lon)
         egm96_legfdn(m, rlat, rleg);
         for (i = j ; i <= nmax1; i++)
         {
-            p[(((i - 1) * i) / 2) + m + 1] = rleg[i];
+            n = (((i - 1) * i) / 2) + m + 1;
+            p[n] = rleg[i];
         }
      }
      egm96_dscml(lon, sinml, cosml);
+     target = egm96_hundu(p, sinml, cosml, gr, re);
 
-     return egm96_hundu(p, sinml, cosml, gr, re);
+     return target;
 }
 
 /* ************************************************************************** */
@@ -248,7 +255,8 @@ double egm96_undulation(double lat, double lon)
 double egm96_compute_altitude_offset(double lat, double lon)
 {
     const double rad = (180.0 / M_PI);
-    return egm96_undulation(lat/rad, lon/rad);
+    double target = egm96_undulation(lat/rad, lon/rad);
+    return target;
 }
 
 /* ************************************************************************** */
@@ -264,11 +272,11 @@ void egm96_dhcsin(FILE *f_12)
 {
     double c, s, ec, es;
 
-    const double j2 = 0.108262982131e-2;
-    const double j4 = -.237091120053e-05;
-    const double j6 = 0.608346498882e-8;
-    const double j8 = -0.142681087920e-10;
-    const double j10 = 0.121439275882e-13;
+    const double j2 = WGS84_J2;
+    const double j4 = WGS84_J4;
+    const double j6 = WGS84_J6;
+    const double j8 = WGS84_J8;
+    const double j10 = WGS84_J10;
 
     unsigned n, m = (((_nmax+1) * (_nmax+2)) / 2);
     for (n = 1; n <= m; n++)
@@ -276,7 +284,7 @@ void egm96_dhcsin(FILE *f_12)
         egm96_data[n][2] = egm96_data[n][3] = 0;
     }
 
-    while (6 == fscanf(f_12, "%i %i %lf %lf %lf %lf", &n, &m, &c, &s, &ec, &es))
+    while (fscanf(f_12, "%i %i %lf %lf %lf %lf", &n, &m, &c, &s, &ec, &es) == 6)
     {
         if (n > _nmax) continue;
         n = ((n * (n + 1)) / 2) + m + 1;
@@ -307,7 +315,7 @@ void egm96_init_arrays(char* egmname, char* corname)
         for (i = 1; i <= _coeffs; i++)
             egm96_data[i][0] = egm96_data[i][1] = 0;
 
-        while (4 == fscanf(f_1, "%i %i %lg %lg", &n, &m, &t1, &t2))
+        while (fscanf(f_1, "%i %i %lg %lg", &n, &m, &t1, &t2) == 4)
         {
             ig = ((n * (n+1)) / 2) + m + 1;
             egm96_data[ig][0] = t1;
